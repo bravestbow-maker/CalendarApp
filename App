@@ -2,8 +2,8 @@ import streamlit as st
 from supabase import create_client
 
 # Supabase接続設定
-url = "あなたのPROJECT_URL"
-key = "あなたのAPI_KEY"
+url = "https://enzwhuwregnooommolqn.supabase.co"
+key = "sb_publishable_5mrxy7V98PhJ-b3a05u_eQ__sW03tWW"
 supabase = create_client(url, key)
 
 st.title("土地家屋調査士 業務管理")
