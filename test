@@ -1,0 +1,18 @@
+import streamlit as st
+from supabase import create_client
+
+# Supabase接続設定
+url = "あなたのPROJECT_URL"
+key = "あなたのAPI_KEY"
+supabase = create_client(url, key)
+
+st.title("土地家屋調査士 業務管理")
+
+# データの取得
+response = supabase.table("tasks").select("*, clients(name)").execute()
+data = response.data
+
+# 一覧表示
+if data:
+    st.write("現在の案件一覧")
+    st.dataframe(data)
