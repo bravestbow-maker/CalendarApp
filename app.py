@@ -11,30 +11,78 @@ def init_connection():
 
 supabase = init_connection()
 
-st.title("土地家屋調査士 業務管理カレンダー")
+st.title("土地家屋調査士 業務管理システム")
 
-# --- 2. データの取得 ---
-response = supabase.table("tasks").select("*, clients(name)").execute()
-data = response.data
+# --- 2. データの準備（顧客リストと業務リスト） ---
+# 顧客一覧を取得（名前を選択肢に出すため）
+clients_res = supabase.table("clients").select("id, name").execute()
+clients_data = clients_res.data
+# 選択肢用の辞書を作成 { "佐藤 豪": 1, "田中 太郎": 2 }
+client_options = {c["name"]: c["id"] for c in clients_data}
 
-# --- 3. カレンダー用のデータに変換 ---
+# 業務一覧を取得（顧客名も一緒に持ってくる）
+tasks_res = supabase.table("tasks").select("*, clients(name)").execute()
+tasks_data = tasks_res.data
+
+# --- 3. 新規案件の登録フォーム（サイドバー） ---
+st.sidebar.header("➕ 新規案件の登録")
+with st.sidebar.form("new_task_form"):
+    # 顧客名をリストから選択
+    selected_client_name = st.selectbox("顧客名を選択", options=list(client_options.keys()))
+    task_type = st.text_input("業務内容", placeholder="例: 滅失登記")
+    due_date = st.date_input("期日")
+    
+    submit_btn = st.form_submit_button("予定を登録する")
+
+    if submit_btn:
+        new_task = {
+            "client_id": client_options[selected_client_name], # 選んだ名前からIDに変換
+            "task_type": task_type,
+            "due_date": str(due_date),
+            "statas": "未着手"
+        }
+        supabase.table("tasks").insert(new_task).execute()
+        st.sidebar.success(f"{selected_client_name}様の案件を登録しました！")
+        st.rerun() # 画面を更新してカレンダーに反映
+
+# --- 4. カレンダー表示 ---
+from streamlit_calendar import calendar
+
 events = []
-for task in data:
-    # due_date（日付）が入っているデータだけをカレンダーに登録
-    if task.get("due_date"): 
-        # clientsが紐付いている場合は名前を取得
-        client_name = task["clients"]["name"] if task.get("clients") else "顧客未定"
+for task in tasks_data:
+    if task.get("due_date"):
+        # 顧客名を取得（紐付けがない場合は「不明」）
+        c_name = task["clients"]["name"] if task.get("clients") else "不明"
         
         events.append({
-            "title": f"{client_name}様: {task['task_type']}",
+            "title": f"👤 {c_name}様 / {task['task_type']}",
             "start": task["due_date"],
-            # クリックした時に表示したい詳細データを extendedProps に入れておく
             "extendedProps": {
-                "status": task.get("statas"), # スペル注意
-                "id": task["id"]
+                "status": task.get("statas"),
+                "client": c_name
             }
         })
 
+calendar_options = {
+    "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek"},
+    "initialView": "dayGridMonth",
+}
+
+st.subheader("🗓️ 業務スケジュール")
+cal_result = calendar(events=events, options=calendar_options)
+
+# --- 5. クリック詳細表示 ---
+if cal_result.get("eventClick"):
+    event = cal_result["eventClick"]["event"]
+    st.write("---")
+    st.subheader("📋 案件詳細")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info(f"**顧客名:** {event['extendedProps']['client']} 様")
+        st.info(f"**内容:** {event['title'].split('/')[-1]}") # タイトルから業務名だけ抽出
+    with col2:
+        st.warning(f"**期日:** {event['start']}")
+        st.success(f"**ステータス:** {event['extendedProps']['status']}")
 # --- 4. カレンダーの表示 ---
 from streamlit_calendar import calendar
 
