@@ -65,3 +65,28 @@ if calendar_result.get("eventClick"):
     st.write(f"**管理ID:** {props['id']}")
 else:
     st.caption("※カレンダーの予定をクリックすると、ここに詳細が表示されます。")
+# --- 予定追加フォーム（サイドバー） ---
+st.sidebar.header("➕ 新規案件の登録")
+
+with st.sidebar.form("new_task_form"):
+    # フォームの入力項目
+    task_type = st.text_input("業務内容 (例: 滅失登記, 表題登記)")
+    due_date = st.date_input("期日")
+    
+    # 登録ボタン
+    submit_btn = st.form_submit_button("予定を登録する")
+
+    if submit_btn:
+        # ボタンが押されたら、Supabaseにデータを送信する
+        new_data = {
+            "client_id": 1,  # ※今回はテストとしてID:1（佐藤様）で固定します
+            "task_type": task_type,
+            "due_date": str(due_date),
+            "statas": "未着手"  # ※Supabaseの現在のカラム名(statas)に合わせています
+        }
+        
+        # データベースに追加
+        supabase.table("tasks").insert(new_data).execute()
+        
+        # 成功メッセージ
+        st.sidebar.success("登録完了！画面右上の「⋮」から「Rerun」を押してカレンダーを更新してください。")
