@@ -1,40 +1,22 @@
 import streamlit as st
 from supabase import create_client
 
+# --- ここから追加：無駄なUIを消し去るカスタムCSS ---
+st.markdown("""
+    <style>
+        /* 右上のヘッダーメニュー（Deployボタンなど）を非表示 */
+        header {visibility: hidden;}
+        /* 一番下の「Made with Streamlit」フッターを非表示 */
+        footer {visibility: hidden;}
+        /* 上部の余白を削り、効率的に情報を表示 */
+        .block-container {padding-top: 2rem;}
+    </style>
+""", unsafe_allow_html=True)
+# --- ここまで追加 ---
+
 # --- 1. Supabaseへの接続 ---
 @st.cache_resource
-def init_connection():
-    url = st.secrets["connections"]["supabase"]["url"]
-    key = st.secrets["connections"]["supabase"]["key"]
-    return create_client(url, key)
-
-supabase = init_connection()
-
-st.title("土地家屋調査士 業務管理システム")
-
-# --- 2. データの準備（顧客リストと業務リスト） ---
-clients_res = supabase.table("clients").select("id, name").execute()
-clients_data = clients_res.data
-
-# もし顧客データが0件の場合のエラー回避
-if not clients_data:
-    st.warning("⚠️ まずSupabaseの `clients` テーブルに顧客データを1件以上登録してください。")
-    st.stop()
-
-client_options = {c["name"]: c["id"] for c in clients_data}
-
-tasks_res = supabase.table("tasks").select("*, clients(name)").execute()
-tasks_data = tasks_res.data
-
-# --- 3. 新規案件の登録フォーム（サイドバー） ---
-st.sidebar.header("➕ 新規案件の登録")
-with st.sidebar.form("new_task_form"):
-    selected_client_name = st.selectbox("顧客名を選択", options=list(client_options.keys()))
-    task_type = st.text_input("業務内容", placeholder="例: 滅失登記")
-    due_date = st.date_input("期日")
-    submit_btn = st.form_submit_button("予定を登録する")
-
-    if submit_btn:
+def init_connection():    if submit_btn:
         new_task = {
             "client_id": client_options[selected_client_name],
             "task_type": task_type,
