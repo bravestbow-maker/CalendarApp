@@ -24,29 +24,31 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- 2. データ取得関数（効率化のため関数化） ---
+# --- 2. データ取得関数 ---
 def get_all_data():
-    clients = supabase.table("clients").select("id, name, address").execute().data
-    tasks = supabase.table("tasks").select("*, clients(name)").execute().data
-    return clients, tasks
+    clients_res = supabase.table("clients").select("id, name, address").execute()
+    tasks_res = supabase.table("tasks").select("*, clients(name)").execute()
+    return clients_res.data, tasks_res.data
 
-clients, tasks = get_all_data()
+# 変数名を統一（エラー回避）
+clients_data, tasks_data = get_all_data()
 
 # --- 3. メイン画面：タブによる機能分離 ---
-tab1, tab2, tab3 = st.tabs(["🗓 業務スケジュール", "👤 顧客カルテ登録", "📈 案件管理・分析"])
+tab1, tab2, tab3 = st.tabs(["🗓 業務スケジュール", "👤 顧客・案件登録", "📈 案件リスト・分析"])
 
 # --- タブ1：業務スケジュール（部下も確認する画面） ---
 with tab1:
     st.subheader("全体スケジュール")
     events = []
-    for task in tasks:
-        if task.get("due_date"):
-            c_name = task["clients"]["name"] if task.get("clients") else "不明"
-            events.append({
-                "title": f"{c_name}様 / {task['task_type']}",
-                "start": task["due_date"],
-                "extendedProps": {"status": task.get("statas"), "client": c_name}
-            })
+    if tasks_data:
+        for task in tasks_data:
+            if task.get("due_date"):
+                c_name = task["clients"]["name"] if task.get("clients") else "不明"
+                events.append({
+                    "title": f"{c_name}様 / {task['task_type']}",
+                    "start": task["due_date"],
+                    "extendedProps": {"status": task.get("statas"), "client": c_name}
+                })
     
     cal_options = {
         "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek"},
@@ -56,7 +58,7 @@ with tab1:
     
     if cal_result.get("eventClick"):
         event = cal_result["eventClick"]["event"]
-        st.info(f"**詳細:** {event['extendedProps']['client']}様 - {event['title']}（状態: {event['extendedProps']['status']}）")
+        st.info(f"**詳細:** {event['extendedProps']['client']}様 - {event['title'].split('/')[-1]} （状態: {event['extendedProps']['status']}）")
 
 # --- タブ2：顧客・案件登録（情報を蓄積する画面） ---
 with tab2:
@@ -64,91 +66,46 @@ with tab2:
     col_a, col_b = st.columns(2)
     
     with col_a:
-        st.write("▼ 新規顧客の登録")
+        st.write("▼ 新規顧客の登録（カルテ作成）")
         with st.form("client_form"):
             c_name = st.text_input("顧客氏名")
             c_address = st.text_input("住所/現場所在地")
             if st.form_submit_button("顧客をDBに保存"):
-                supabase.table("clients").insert({"name": c_name, "address": c_address}).execute()
-                st.success("顧客情報を蓄積しました。")
-                st.rerun()
+                if c_name:
+                    supabase.table("clients").insert({"name": c_name, "address": c_address}).execute()
+                    st.success("顧客情報を蓄積しました。")
+                    st.rerun()
+                else:
+                    st.error("氏名を入力してください。")
 
     with col_b:
-        st.write("▼ 案件（タスク）の割り当て")
+        st.write("▼ 新規案件の割り当て")
         with st.form("task_form"):
-            client_options = {c["name"]: c["id"] for c in clients}
-            target_client = st.selectbox("顧客を選択", options=list(client_options.keys()))
-            t_type = st.text_input("業務内容", placeholder="滅失登記 など")
-            t_date = st.date_input("期日")
-            if st.form_submit_button("スケジュールに反映"):
-                supabase.table("tasks").insert({
-                    "client_id": client_options[target_client],
-                    "task_type": t_type,
-                    "due_date": str(t_date),
-                    "statas": "未着手"
-                }).execute()
-                st.success("案件を登録しました。")
-                st.rerun()
+            if clients_data:
+                client_options = {c["name"]: c["id"] for c in clients_data}
+                target_client = st.selectbox("顧客を選択", options=list(client_options.keys()))
+                t_type = st.text_input("業務内容", placeholder="例: 滅失登記")
+                t_date = st.date_input("期日")
+                if st.form_submit_button("スケジュールに反映"):
+                    supabase.table("tasks").insert({
+                        "client_id": client_options[target_client],
+                        "task_type": t_type,
+                        "due_date": str(t_date),
+                        "statas": "未着手"
+                    }).execute()
+                    st.success("案件を登録しました。")
+                    st.rerun()
+            else:
+                st.warning("先に左側のフォームで顧客を登録してください。")
+                st.form_submit_button("スケジュールに反映", disabled=True)
 
-# --- タブ3：案件分析（効率化のための統計） ---
+# --- タブ3：案件分析（効率化のためのリスト） ---
 with tab3:
-    st.subheader("業務効率の確認")
-    if tasks:
-        # 簡易的な表形式での一覧表示
+    st.subheader("現在の案件一覧")
+    if tasks_data:
         import pandas as pd
-        df = pd.DataFrame(tasks)
-        st.table(df[['task_type', 'due_date', 'statas']])
-# --- 3. 新規案件の登録フォーム（サイドバー） ---
-st.sidebar.header("➕ 新規案件の登録")
-with st.sidebar.form("new_task_form"):
-    selected_client_name = st.selectbox("顧客名", options=list(client_options.keys()))
-    task_type = st.text_input("業務内容", placeholder="例: 滅失登記")
-    due_date = st.date_input("期日")
-    submit_btn = st.form_submit_button("登録")
-
-    if submit_btn:
-        new_task = {
-            "client_id": client_options[selected_client_name],
-            "task_type": task_type,
-            "due_date": str(due_date),
-            "statas": "未着手"
-        }
-        supabase.table("tasks").insert(new_task).execute()
-        st.sidebar.success("登録完了")
-        st.rerun()
-
-# --- 4. カレンダー表示 ---
-events = []
-if tasks_data:
-    for task in tasks_data:
-        if task.get("due_date"):
-            c_name = task["clients"]["name"] if task.get("clients") else "不明"
-            events.append({
-                "title": f"{c_name}様 / {task['task_type']}",
-                "start": task["due_date"],
-                "extendedProps": {
-                    "status": task.get("statas"),
-                    "client": c_name
-                }
-            })
-
-calendar_options = {
-    "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek"},
-    "initialView": "dayGridMonth",
-}
-
-st.subheader("🗓️ スケジュール")
-cal_result = calendar(events=events, options=calendar_options, key="main_calendar")
-
-# --- 5. クリック詳細表示 ---
-if cal_result.get("eventClick"):
-    event = cal_result["eventClick"]["event"]
-    st.write("---")
-    st.subheader("📋 案件詳細")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.info(f"**顧客:** {event['extendedProps']['client']} 様")
-        st.info(f"**内容:** {event['title'].split('/')[-1]}")
-    with col2:
-        st.warning(f"**期日:** {event['start']}")
-        st.success(f"**ステータス:** {event['extendedProps']['status']}")
+        df = pd.DataFrame(tasks_data)
+        # 必要な列だけを綺麗に表示
+        cols = [c for c in ['task_type', 'due_date', 'statas'] if c in df.columns]
+        if cols:
+            st.dataframe(df[cols], use_container_width=True)
