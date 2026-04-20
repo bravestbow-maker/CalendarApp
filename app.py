@@ -16,7 +16,8 @@ st.markdown("""
 
 # --- 1. Supabaseへの接続 ---
 @st.cache_resource
-def init_connection():    if submit_btn:
+def init_connection():    
+    if submit_btn:
         new_task = {
             "client_id": client_options[selected_client_name],
             "task_type": task_type,
